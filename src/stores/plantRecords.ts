@@ -76,6 +76,11 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
   const personTaskSummaries = computed((): PersonTaskSummary[] => {
     const summaryMap = new Map<string, PersonTaskSummary>()
 
+    const riskyRecordIds = new Set<string>()
+    riskIssues.value.forEach((issue) => {
+      issue.recordIds.forEach((id) => riskyRecordIds.add(id))
+    })
+
     records.value.forEach((r) => {
       if (!r.responsiblePerson) return
 
@@ -98,7 +103,7 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
       if (r.status === '待补充') summary.toBeSupplementedCount++
       if (r.status === '待校对') summary.pendingProofreadCount++
       if (r.status === '可打印') summary.printableCount++
-      if (r.riskLevel > 0) summary.riskCount++
+      if (riskyRecordIds.has(r.id)) summary.riskCount++
       if (r.isHandedOver) {
         summary.handedOverCount++
       } else {
@@ -222,6 +227,14 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
   })
 
   const totalRiskCount = computed(() => riskIssues.value.length)
+
+  const riskyRecordIds = computed(() => {
+    const ids = new Set<string>()
+    riskIssues.value.forEach((issue) => {
+      issue.recordIds.forEach((id) => ids.add(id))
+    })
+    return ids
+  })
 
   async function loadRecords(activityId: string) {
     currentActivityId.value = activityId
@@ -370,6 +383,7 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     personTaskSummaries,
     riskIssues,
     totalRiskCount,
+    riskyRecordIds,
     loadRecords,
     addRecord,
     copyFromRecord,

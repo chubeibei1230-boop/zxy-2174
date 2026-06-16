@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useActivityStore } from '@/stores/activity'
 import { usePlantRecordsStore } from '@/stores/plantRecords'
@@ -31,6 +31,33 @@ const personRecords = computed(() => recordStore.getRecordsByPerson(personName.v
 
 const expandedRecords = ref<Set<string>>(new Set())
 const localRecords = ref<Map<string, PlantRecord>>(new Map())
+const saveTimers = ref<Map<string, { maintenance?: number; handover?: number }>>(new Map())
+
+function debouncedSave(id: string, field: 'maintenanceInfo' | 'handoverNote', value: string) {
+  const timers = saveTimers.value.get(id) || {}
+  const timerKey = field === 'maintenanceInfo' ? 'maintenance' : 'handover'
+
+  if (timers[timerKey]) {
+    clearTimeout(timers[timerKey])
+  }
+
+  timers[timerKey] = window.setTimeout(async () => {
+    if (field === 'maintenanceInfo') {
+      await recordStore.updateMaintenanceInfo(id, value)
+    } else {
+      await recordStore.updateHandoverNote(id, value)
+    }
+    timers[timerKey] = undefined
+    saveTimers.value = new Map(saveTimers.value)
+  }, 500)
+
+  saveTimers.value.set(id, timers)
+}
+
+function handleInputChange(id: string, field: 'maintenanceInfo' | 'handoverNote', value: string) {
+  updateLocalField(id, field, value)
+  debouncedSave(id, field, value)
+}
 
 const personSummary = computed(() => {
   const total = personRecords.value.length
@@ -38,7 +65,7 @@ const personSummary = computed(() => {
   const toBeSupplemented = personRecords.value.filter((r) => r.status === '待补充').length
   const pendingProofread = personRecords.value.filter((r) => r.status === '待校对').length
   const printable = personRecords.value.filter((r) => r.status === '可打印').length
-  const riskCount = personRecords.value.filter((r) => r.riskLevel > 0).length
+  const riskCount = personRecords.value.filter((r) => recordStore.riskyRecordIds.has(r.id)).length
   const progress = total > 0 ? (handedOver / total) * 100 : 0
   return {
     total,
@@ -93,9 +120,12 @@ async function handleUpdateHandoverNote(id: string, handoverNote: string) {
 }
 
 async function handleMarkHandedOver(id: string) {
-  const record = personRecords.value.find((r) => r.id === id)
-  if (!record) return
-  await recordStore.markAsHandedOver(id, record.handoverNote)
+  const localRecord = localRecords.value.get(id)
+  if (!localRecord) return
+
+  await recordStore.updateMaintenanceInfo(id, localRecord.maintenanceInfo)
+  await recordStore.updateHandoverNote(id, localRecord.handoverNote)
+  await recordStore.markAsHandedOver(id, localRecord.handoverNote)
   updateLocalField(id, 'isHandedOver', true)
   updateLocalField(id, 'handedOverAt', Date.now())
 }
@@ -144,7 +174,32 @@ onMounted(async () => {
       localRecords.value.set(r.id, { ...r })
     })
   }
+  window.addEventListener('beforeunload', handleBeforeUnload)
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
+function hasUnsavedChanges(): boolean {
+  for (const [id, localRecord] of localRecords.value) {
+    const storeRecord = recordStore.records.find((r) => r.id === id)
+    if (!storeRecord) {
+      if (localRecord.maintenanceInfo || localRecord.handoverNote) return true
+    } else {
+      if (localRecord.maintenanceInfo !== storeRecord.maintenanceInfo) return true
+      if (localRecord.handoverNote !== storeRecord.handoverNote) return true
+    }
+  }
+  return false
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (hasUnsavedChanges()) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
 </script>
 
 <template>
@@ -314,8 +369,8 @@ onMounted(async () => {
                   class="form-textarea"
                   placeholder="请填写养护信息，如养护要点、注意事项等..."
                   rows="3"
+                  @input="handleInputChange(record.id, 'maintenanceInfo', ($event.target as HTMLTextAreaElement).value)"
                   @blur="handleUpdateMaintenance(record.id, ($event.target as HTMLTextAreaElement).value)"
-                  @input="updateLocalField(record.id, 'maintenanceInfo', ($event.target as HTMLTextAreaElement).value)"
                 ></textarea>
               </div>
 
@@ -329,8 +384,8 @@ onMounted(async () => {
                   class="form-textarea"
                   placeholder="请填写交接备注，如交接时的特殊说明..."
                   rows="2"
+                  @input="handleInputChange(record.id, 'handoverNote', ($event.target as HTMLTextAreaElement).value)"
                   @blur="handleUpdateHandoverNote(record.id, ($event.target as HTMLTextAreaElement).value)"
-                  @input="updateLocalField(record.id, 'handoverNote', ($event.target as HTMLTextAreaElement).value)"
                 ></textarea>
               </div>
 

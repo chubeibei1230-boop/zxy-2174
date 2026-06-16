@@ -58,7 +58,7 @@ onMounted(async () => {
 }
 
 .main-layout {
-  @apply flex gap-6;
+  @apply flex flex-col md:flex-row gap-6;
 }
 
 .main-content {

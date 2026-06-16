@@ -227,9 +227,15 @@ function goToResponsibleDashboard() {
 <style scoped>
 .floating-summary {
   @apply bg-white rounded-2xl border border-stone-200 shadow-sm p-5
-    sticky top-4 space-y-4;
+    space-y-4 w-full md:w-auto md:sticky md:top-4;
   min-width: 240px;
-  max-width: 280px;
+  max-width: 100%;
+}
+
+@media (min-width: 768px) {
+  .floating-summary {
+    max-width: 280px;
+  }
 }
 
 .summary-header {
