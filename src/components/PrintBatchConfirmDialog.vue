@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { usePrintBatchStore } from '@/stores/printBatch'
 import { usePlantRecordsStore } from '@/stores/plantRecords'
 import { PROOFREAD_STATUSES } from '@/types'
@@ -18,6 +18,7 @@ import {
   Users,
   Clock,
   User,
+  Edit3,
 } from 'lucide-vue-next'
 
 const printBatchStore = usePrintBatchStore()
@@ -27,6 +28,26 @@ const showAllPrintable = ref(false)
 const showAllNotDisplayed = ref(false)
 
 const batch = computed(() => printBatchStore.previewBatch)
+
+watch(
+  () => printBatchStore.showConfirmDialog,
+  (show) => {
+    if (show && printBatchStore.isEditingConfirmed && batch.value) {
+      confirmedByName.value = batch.value.confirmedBy || ''
+    } else if (show && !printBatchStore.isEditingConfirmed) {
+      confirmedByName.value = ''
+    }
+  },
+  { immediate: true },
+)
+
+const dialogTitle = computed(() => {
+  return printBatchStore.isEditingConfirmed ? '编辑交付批次' : '打印批次确认与交付包'
+})
+
+const confirmButtonText = computed(() => {
+  return printBatchStore.isEditingConfirmed ? '保存并生成新版本' : '确认并生成交付包'
+})
 
 const highRiskIssues = computed(() => {
   if (!batch.value) return []
@@ -99,9 +120,13 @@ function handleCancel() {
       <div class="dialog-container">
         <div class="dialog-header">
           <div class="header-left">
-            <Package :size="20" class="text-emerald-600" />
-            <h2 class="dialog-title">打印批次确认与交付包</h2>
+            <Package :size="20" :class="printBatchStore.isEditingConfirmed ? 'text-amber-600' : 'text-emerald-600'" />
+            <h2 class="dialog-title">{{ dialogTitle }}</h2>
             <span class="version-badge">{{ batch.version }}</span>
+            <span v-if="printBatchStore.isEditingConfirmed" class="edit-badge">
+              <Edit3 :size="12" />
+              编辑模式
+            </span>
           </div>
           <button class="btn-close" @click="handleCancel">
             <X :size="18" />
@@ -131,7 +156,7 @@ function handleCancel() {
                 </span>
                 <span class="meta-item">
                   <Clock :size="14" />
-                  生成时间：{{ formatDate(Date.now()) }}
+                  {{ printBatchStore.isEditingConfirmed ? '原确认时间' : '生成时间' }}：{{ formatDate(printBatchStore.batchGeneratedAt) }}
                 </span>
               </div>
             </div>
@@ -372,7 +397,7 @@ function handleCancel() {
           </button>
           <button class="btn-confirm" @click="handleConfirm">
             <Check :size="16" />
-            确认并生成交付包
+            {{ confirmButtonText }}
           </button>
         </div>
       </div>
@@ -405,6 +430,10 @@ function handleCancel() {
 
 .version-badge {
   @apply text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-mono;
+}
+
+.edit-badge {
+  @apply text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full flex items-center gap-1;
 }
 
 .btn-close {

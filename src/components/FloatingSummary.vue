@@ -35,8 +35,8 @@ function handleCreatePrintBatch() {
   )
 }
 
-function handleViewLatestBatch() {
-  printBatchStore.openSummaryView()
+function handleViewHistory() {
+  printBatchStore.openHistoryListView()
 }
 
 const hasSelection = computed(() => recordStore.selectedIds.size > 0)
@@ -157,7 +157,7 @@ function handleExportChecklist() {
         <button
           v-if="printBatchStore.batches.length > 0"
           class="btn-export"
-          @click="handleViewLatestBatch"
+          @click="handleViewHistory"
         >
           <FileCheck :size="14" />
           <span>查看历史交付</span>

@@ -21,6 +21,7 @@ import {
   ArrowLeft,
   FileCheck,
   ListChecks,
+  Edit3,
 } from 'lucide-vue-next'
 import { useExport } from '@/composables/useExport'
 
@@ -93,7 +94,9 @@ function handleClose() {
 }
 
 function handleBackToConfirm() {
-  printBatchStore.closeSummaryView()
+  if (batch.value) {
+    printBatchStore.openHistoryBatchForEdit(batch.value)
+  }
 }
 
 function handleExportPrint() {
@@ -139,6 +142,10 @@ const tabs = [
             </div>
           </div>
           <div class="header-actions">
+            <button class="btn-action secondary" @click="handleBackToConfirm">
+              <Edit3 :size="16" />
+              修改备注
+            </button>
             <button class="btn-action" @click="handleExportChecklist">
               <FileText :size="16" />
               导出校对清单
@@ -580,6 +587,10 @@ const tabs = [
 
 .btn-action.primary {
   @apply text-white bg-emerald-600 border-emerald-600 hover:bg-emerald-700;
+}
+
+.btn-action.secondary {
+  @apply text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100;
 }
 
 .btn-close {

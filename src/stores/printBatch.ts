@@ -8,7 +8,10 @@ export const usePrintBatchStore = defineStore('printBatch', () => {
   const currentBatch = ref<PrintBatch | null>(null)
   const showConfirmDialog = ref(false)
   const showSummaryView = ref(false)
+  const showHistoryList = ref(false)
   const draftDeliveryNote = ref('')
+  const batchGeneratedAt = ref(0)
+  const isEditingConfirmed = ref(false)
 
   function generateBatchSummary(records: PlantRecord[], issues: RiskIssue[]): PrintBatchSummary {
     const totalRecords = records.length
@@ -58,6 +61,7 @@ export const usePrintBatchStore = defineStore('printBatch', () => {
     const sortedRecords = records.slice().sort((a, b) => a.displayOrder - b.displayOrder)
     const printableRecords = sortedRecords.filter((r) => r.status === '可打印')
     const notDisplayedRecords = sortedRecords.filter((r) => r.status === '暂不展示')
+    const now = Date.now()
 
     currentBatch.value = {
       id: crypto.randomUUID(),
@@ -74,22 +78,55 @@ export const usePrintBatchStore = defineStore('printBatch', () => {
       version: generateVersion(),
     }
     draftDeliveryNote.value = ''
+    batchGeneratedAt.value = now
+    isEditingConfirmed.value = false
     showConfirmDialog.value = true
+  }
+
+  function openHistoryBatchForEdit(batch: PrintBatch) {
+    currentBatch.value = { ...batch }
+    draftDeliveryNote.value = batch.deliveryNote
+    batchGeneratedAt.value = batch.confirmedAt
+    isEditingConfirmed.value = true
+    showSummaryView.value = false
+    showConfirmDialog.value = true
+  }
+
+  function openHistoryListView() {
+    showHistoryList.value = true
+  }
+
+  function closeHistoryListView() {
+    showHistoryList.value = false
+  }
+
+  function viewBatchFromHistory(batch: PrintBatch) {
+    currentBatch.value = batch
+    showHistoryList.value = false
+    showSummaryView.value = true
   }
 
   async function confirmBatch(confirmedBy: string = '负责人') {
     if (!currentBatch.value) return null
 
+    const now = Date.now()
     const batchData = JSON.parse(JSON.stringify({
       ...currentBatch.value,
       deliveryNote: draftDeliveryNote.value,
-      confirmedAt: Date.now(),
+      confirmedAt: now,
       confirmedBy,
+      id: isEditingConfirmed.value ? crypto.randomUUID() : currentBatch.value.id,
+      version: isEditingConfirmed.value ? generateVersion() : currentBatch.value.version,
     }))
 
     await dbSavePrintBatch(batchData)
-    batches.value.push(batchData)
+    if (isEditingConfirmed.value) {
+      batches.value.unshift(batchData)
+    } else {
+      batches.value.push(batchData)
+    }
     currentBatch.value = batchData
+    isEditingConfirmed.value = false
     showConfirmDialog.value = false
     showSummaryView.value = true
 
@@ -136,11 +173,18 @@ export const usePrintBatchStore = defineStore('printBatch', () => {
     currentBatch,
     showConfirmDialog,
     showSummaryView,
+    showHistoryList,
     draftDeliveryNote,
+    batchGeneratedAt,
+    isEditingConfirmed,
     previewBatch,
     hasUnconfirmedRisks,
     hasIncompleteRecords,
     createPreviewBatch,
+    openHistoryBatchForEdit,
+    openHistoryListView,
+    closeHistoryListView,
+    viewBatchFromHistory,
     confirmBatch,
     loadBatches,
     loadLatestBatch,
