@@ -196,25 +196,16 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
   }
 
   async function reorderFiltered(filteredList: PlantRecord[]) {
-    const filteredIds = filteredList.map((r) => r.id)
-    const filteredSet = new Set(filteredIds)
+    const filteredQueue = filteredList
+      .map((r) => records.value.find((x) => x.id === r.id))
+      .filter((r): r is PlantRecord => Boolean(r))
 
-    const nonFiltered = records.value
-      .filter((r) => !filteredSet.has(r.id))
-      .sort((a, b) => a.displayOrder - b.displayOrder)
-
-    const result: PlantRecord[] = []
-
-    for (const r of filteredList) {
-      const record = records.value.find((x) => x.id === r.id)
-      if (record) {
-        result.push(record)
-      }
-    }
-
-    for (const r of nonFiltered) {
-      result.push(r)
-    }
+    const filteredSet = new Set(filteredQueue.map((r) => r.id))
+    const sortedRecords = records.value.slice().sort((a, b) => a.displayOrder - b.displayOrder)
+    const result = sortedRecords.map((record) => {
+      if (!filteredSet.has(record.id)) return record
+      return filteredQueue.shift() || record
+    })
 
     result.forEach((r, i) => {
       r.displayOrder = i + 1
