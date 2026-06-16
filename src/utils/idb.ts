@@ -1,8 +1,8 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { Activity, PlantRecord } from '@/types'
+import type { Activity, PlantRecord, PrintBatch } from '@/types'
 
 const DB_NAME = 'plant_proofreading'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 let dbInstance: IDBPDatabase | null = null
 
@@ -10,7 +10,7 @@ async function getDB(): Promise<IDBPDatabase> {
   if (dbInstance) return dbInstance
 
   dbInstance = await openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion) {
       if (!db.objectStoreNames.contains('activities')) {
         db.createObjectStore('activities', { keyPath: 'id' })
       }
@@ -18,6 +18,13 @@ async function getDB(): Promise<IDBPDatabase> {
         const store = db.createObjectStore('plant_records', { keyPath: 'id' })
         store.createIndex('activityId', 'activityId', { unique: false })
         store.createIndex('displayOrder', 'displayOrder', { unique: false })
+      }
+      if (oldVersion < 2) {
+        if (!db.objectStoreNames.contains('print_batches')) {
+          const store = db.createObjectStore('print_batches', { keyPath: 'id' })
+          store.createIndex('activityId', 'activityId', { unique: false })
+          store.createIndex('confirmedAt', 'confirmedAt', { unique: false })
+        }
       }
     },
   })
@@ -74,4 +81,27 @@ export async function dbDeleteRecordsByActivity(activityId: string): Promise<voi
     await tx.store.delete(record.id)
   }
   await tx.done
+}
+
+export async function dbSavePrintBatch(batch: PrintBatch): Promise<void> {
+  const db = await getDB()
+  await db.put('print_batches', batch)
+}
+
+export async function dbGetPrintBatchesByActivity(activityId: string): Promise<PrintBatch[]> {
+  const db = await getDB()
+  const batches = await db.getAllFromIndex('print_batches', 'activityId', activityId)
+  return batches.sort((a, b) => b.confirmedAt - a.confirmedAt)
+}
+
+export async function dbGetLatestPrintBatch(activityId: string): Promise<PrintBatch | undefined> {
+  const db = await getDB()
+  const batches = await db.getAllFromIndex('print_batches', 'activityId', activityId)
+  if (batches.length === 0) return undefined
+  return batches.sort((a, b) => b.confirmedAt - a.confirmedAt)[0]
+}
+
+export async function dbGetAllPrintBatches(): Promise<PrintBatch[]> {
+  const db = await getDB()
+  return db.getAll('print_batches')
 }

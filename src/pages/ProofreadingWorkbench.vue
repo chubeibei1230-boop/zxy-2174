@@ -2,18 +2,24 @@
 import { onMounted } from 'vue'
 import { useActivityStore } from '@/stores/activity'
 import { usePlantRecordsStore } from '@/stores/plantRecords'
+import { usePrintBatchStore } from '@/stores/printBatch'
 import ActivityInfo from '@/components/ActivityInfo.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import PlantCardList from '@/components/PlantCardList.vue'
 import FloatingSummary from '@/components/FloatingSummary.vue'
+import PrintBatchConfirmDialog from '@/components/PrintBatchConfirmDialog.vue'
+import DeliverySummaryView from '@/components/DeliverySummaryView.vue'
 
 const activityStore = useActivityStore()
 const recordStore = usePlantRecordsStore()
+const printBatchStore = usePrintBatchStore()
 
 onMounted(async () => {
   await activityStore.loadActivity()
   if (activityStore.activity.id) {
     await recordStore.loadRecords(activityStore.activity.id)
+    await printBatchStore.loadBatches(activityStore.activity.id)
+    await printBatchStore.loadLatestBatch(activityStore.activity.id)
   } else {
     await activityStore.saveActivity({})
     await recordStore.loadRecords(activityStore.activity.id)
@@ -34,6 +40,9 @@ onMounted(async () => {
         <FloatingSummary />
       </aside>
     </div>
+
+    <PrintBatchConfirmDialog />
+    <DeliverySummaryView />
   </div>
   <div v-else class="loading">
     <div class="loading-icon">🌿</div>

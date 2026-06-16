@@ -47,6 +47,32 @@ export interface FilterState {
   search: string
 }
 
+export interface PrintBatchSummary {
+  totalRecords: number
+  printableCount: number
+  pendingCount: number
+  toBeSupplementedCount: number
+  notDisplayedCount: number
+  highRiskCount: number
+  mediumRiskCount: number
+  lowRiskCount: number
+}
+
+export interface PrintBatch {
+  id: string
+  activityId: string
+  activitySnapshot: Activity
+  recordsSnapshot: PlantRecord[]
+  issuesSnapshot: RiskIssue[]
+  summary: PrintBatchSummary
+  printableRecords: PlantRecord[]
+  notDisplayedRecords: PlantRecord[]
+  deliveryNote: string
+  confirmedAt: number
+  confirmedBy: string
+  version: string
+}
+
 export const LIGHT_TYPES: LightType[] = ['全日照', '半日照', '耐阴', '喜散射光']
 
 export const PROOFREAD_STATUSES: ProofreadStatus[] = ['待补充', '待校对', '可打印', '暂不展示']

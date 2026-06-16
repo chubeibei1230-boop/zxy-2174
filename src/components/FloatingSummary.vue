@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { usePlantRecordsStore } from '@/stores/plantRecords'
 import { useActivityStore } from '@/stores/activity'
+import { usePrintBatchStore } from '@/stores/printBatch'
 import { useAutoCheck } from '@/composables/useAutoCheck'
 import { useExport } from '@/composables/useExport'
 import { PROOFREAD_STATUSES } from '@/types'
@@ -16,12 +17,27 @@ import {
   AlertCircle,
   Info,
   Leaf,
+  Package,
+  FileCheck,
 } from 'lucide-vue-next'
 
 const recordStore = usePlantRecordsStore()
 const activityStore = useActivityStore()
+const printBatchStore = usePrintBatchStore()
 const { issues, highRiskIssues, mediumRiskIssues, lowRiskIssues } = useAutoCheck()
 const { exportCSV, exportPrintHTML, exportChecklist } = useExport()
+
+function handleCreatePrintBatch() {
+  printBatchStore.createPreviewBatch(
+    activityStore.activity,
+    recordStore.records,
+    issues.value,
+  )
+}
+
+function handleViewLatestBatch() {
+  printBatchStore.openSummaryView()
+}
 
 const hasSelection = computed(() => recordStore.selectedIds.size > 0)
 
@@ -129,6 +145,27 @@ function handleExportChecklist() {
         <CheckSquare :size="12" />
         全选当前列表
       </button>
+    </div>
+
+    <div class="print-batch-section">
+      <h4 class="export-title">打印批次与交付</h4>
+      <div class="export-buttons">
+        <button class="btn-export btn-print-batch" @click="handleCreatePrintBatch">
+          <Package :size="14" />
+          <span>生成交付批次</span>
+        </button>
+        <button
+          v-if="printBatchStore.batches.length > 0"
+          class="btn-export"
+          @click="handleViewLatestBatch"
+        >
+          <FileCheck :size="14" />
+          <span>查看历史交付</span>
+        </button>
+      </div>
+      <div v-if="printBatchStore.batches.length > 0" class="batch-history-info">
+        <span class="history-count">已确认 {{ printBatchStore.batches.length }} 个批次</span>
+      </div>
     </div>
 
     <div class="export-section">
@@ -336,5 +373,22 @@ function handleExportChecklist() {
 
 .btn-checklist {
   @apply bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100;
+}
+
+.print-batch-section {
+  @apply pt-3 border-t border-stone-100;
+}
+
+.btn-print-batch {
+  @apply bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-400
+    hover:from-emerald-600 hover:to-teal-600 shadow-sm;
+}
+
+.batch-history-info {
+  @apply mt-2 text-xs text-stone-400 text-center;
+}
+
+.history-count {
+  @apply px-2 py-0.5 bg-stone-100 rounded-full;
 }
 </style>
