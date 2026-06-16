@@ -39,7 +39,7 @@ watch(
 )
 
 function onUpdate(field: keyof PlantRecord, value: any) {
-  localRecord.value[field] = value
+  ;(localRecord.value as any)[field] = value
   emit('update', props.record.id, { [field]: value })
 }
 

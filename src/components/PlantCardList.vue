@@ -20,8 +20,9 @@ watch(
   { immediate: true, deep: true },
 )
 
-function onDragEnd() {
-  store.reorderRecords(localList.value)
+async function onDragEnd() {
+  await store.reorderFiltered(localList.value)
+  localList.value = [...store.filteredRecords]
 }
 
 function onUpdate(id: string, data: Partial<PlantRecord>) {
@@ -35,11 +36,18 @@ function onDelete(id: string) {
 }
 
 function onCopyPrev(id: string) {
-  store.copyPreviousRecord(id)
+  const list = localList.value
+  const idx = list.findIndex((r) => r.id === id)
+  if (idx <= 0) {
+    alert('已是第一条记录，没有上一条可复制')
+    return
+  }
+  const sourceId = list[idx - 1].id
+  store.copyFromRecord(sourceId, id)
 }
 
 async function addNew() {
-  await store.addRecord(store.records[0]?.activityId || '')
+  await store.addRecord()
 }
 </script>
 

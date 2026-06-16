@@ -11,6 +11,7 @@ import {
 
 export const usePlantRecordsStore = defineStore('plantRecords', () => {
   const records = ref<PlantRecord[]>([])
+  const currentActivityId = ref('')
   const selectedIds = ref<Set<string>>(new Set())
   const filter = ref<FilterState>({
     lightType: '',
@@ -21,22 +22,25 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
   })
 
   const filteredRecords = computed(() => {
-    return records.value.filter((r) => {
-      if (filter.value.lightType && r.lightType !== filter.value.lightType) return false
-      if (filter.value.responsiblePerson && r.responsiblePerson !== filter.value.responsiblePerson)
-        return false
-      if (filter.value.status && r.status !== filter.value.status) return false
-      if (filter.value.riskLevel !== '' && r.riskLevel !== filter.value.riskLevel) return false
-      if (filter.value.search) {
-        const q = filter.value.search.toLowerCase()
-        return (
-          r.plantName.toLowerCase().includes(q) ||
-          r.latinName.toLowerCase().includes(q) ||
-          r.responsiblePerson.toLowerCase().includes(q)
-        )
-      }
-      return true
-    })
+    return records.value
+      .slice()
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .filter((r) => {
+        if (filter.value.lightType && r.lightType !== filter.value.lightType) return false
+        if (filter.value.responsiblePerson && r.responsiblePerson !== filter.value.responsiblePerson)
+          return false
+        if (filter.value.status && r.status !== filter.value.status) return false
+        if (filter.value.riskLevel !== '' && r.riskLevel !== filter.value.riskLevel) return false
+        if (filter.value.search) {
+          const q = filter.value.search.toLowerCase()
+          return (
+            r.plantName.toLowerCase().includes(q) ||
+            r.latinName.toLowerCase().includes(q) ||
+            r.responsiblePerson.toLowerCase().includes(q)
+          )
+        }
+        return true
+      })
   })
 
   const responsiblePersons = computed(() => {
@@ -74,15 +78,15 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
       }
     }
 
-    const orders = records.value.map((r) => r.displayOrder).sort((a, b) => a - b)
-    for (let i = 1; i < orders.length; i++) {
-      if (orders[i] - orders[i - 1] > 1) {
+    const sorted = records.value.slice().sort((a, b) => a.displayOrder - b.displayOrder)
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].displayOrder - sorted[i - 1].displayOrder > 1) {
+        const gapStart = sorted[i - 1].displayOrder
+        const gapEnd = sorted[i].displayOrder
         issues.push({
           type: 'order_gap',
-          recordIds: records.value
-            .filter((r) => r.displayOrder >= orders[i - 1] && r.displayOrder <= orders[i])
-            .map((r) => r.id),
-          message: `序号 ${orders[i - 1]} 与 ${orders[i]} 之间存在断档`,
+          recordIds: [sorted[i - 1].id, sorted[i].id],
+          message: `序号 ${gapStart} 与 ${gapEnd} 之间存在断档`,
           level: 2,
         })
       }
@@ -122,37 +126,52 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
   const totalRiskCount = computed(() => riskIssues.value.length)
 
   async function loadRecords(activityId: string) {
+    currentActivityId.value = activityId
     records.value = await dbGetRecordsByActivity(activityId)
   }
 
-  async function addRecord(activityId: string) {
+  async function addRecord() {
+    if (!currentActivityId.value) return null
     const maxOrder = records.value.reduce((max, r) => Math.max(max, r.displayOrder), 0)
-    const record = createEmptyRecord(activityId, maxOrder + 1)
+    const record = createEmptyRecord(currentActivityId.value, maxOrder + 1)
     records.value.push(record)
     await dbSaveRecord(record)
     return record
   }
 
-  async function copyPreviousRecord(recordId: string) {
-    const idx = records.value.findIndex((r) => r.id === recordId)
-    if (idx < 0) return
-    const prev = records.value[idx]
+  async function copyFromRecord(sourceId: string, beforeId?: string) {
+    const sourceIdx = records.value.findIndex((r) => r.id === sourceId)
+    if (sourceIdx < 0) return null
+
+    const source = records.value[sourceIdx]
     const newRecord: PlantRecord = {
-      ...prev,
+      ...source,
       id: crypto.randomUUID(),
       plantName: '',
       latinName: '',
       proofreadNote: '',
       status: '待补充',
       riskLevel: 0,
-      displayOrder: prev.displayOrder + 1,
+      activityId: currentActivityId.value,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
-    for (let i = idx + 1; i < records.value.length; i++) {
+
+    let insertIndex: number
+    if (beforeId) {
+      const beforeIdx = records.value.findIndex((r) => r.id === beforeId)
+      insertIndex = beforeIdx >= 0 ? beforeIdx : records.value.length
+      newRecord.displayOrder = records.value[insertIndex]?.displayOrder || (records.value.length + 1)
+    } else {
+      insertIndex = sourceIdx + 1
+      newRecord.displayOrder = source.displayOrder + 1
+    }
+
+    for (let i = insertIndex; i < records.value.length; i++) {
       records.value[i].displayOrder++
     }
-    records.value.splice(idx + 1, 0, newRecord)
+
+    records.value.splice(insertIndex, 0, newRecord)
     await dbSaveRecords(records.value)
     return newRecord
   }
@@ -171,15 +190,37 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     for (let i = 0; i < records.value.length; i++) {
       records.value[i].displayOrder = i + 1
     }
+    await dbDeleteRecord(id)
     await dbSaveRecords(records.value)
     selectedIds.value.delete(id)
   }
 
-  async function reorderRecords(newList: PlantRecord[]) {
-    newList.forEach((r, i) => {
+  async function reorderFiltered(filteredList: PlantRecord[]) {
+    const filteredIds = filteredList.map((r) => r.id)
+    const filteredSet = new Set(filteredIds)
+
+    const nonFiltered = records.value
+      .filter((r) => !filteredSet.has(r.id))
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+
+    const result: PlantRecord[] = []
+
+    for (const r of filteredList) {
+      const record = records.value.find((x) => x.id === r.id)
+      if (record) {
+        result.push(record)
+      }
+    }
+
+    for (const r of nonFiltered) {
+      result.push(r)
+    }
+
+    result.forEach((r, i) => {
       r.displayOrder = i + 1
     })
-    records.value = [...newList]
+
+    records.value = result.sort((a, b) => a.displayOrder - b.displayOrder)
     await dbSaveRecords(records.value)
   }
 
@@ -201,6 +242,7 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     } else {
       selectedIds.value.add(id)
     }
+    selectedIds.value = new Set(selectedIds.value)
   }
 
   function selectAll() {
@@ -209,7 +251,7 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
   }
 
   function clearSelection() {
-    selectedIds.value.clear()
+    selectedIds.value = new Set()
   }
 
   function setFilter(key: keyof FilterState, value: string | number) {
@@ -228,6 +270,7 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
 
   return {
     records,
+    currentActivityId,
     selectedIds,
     filter,
     filteredRecords,
@@ -237,10 +280,10 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     totalRiskCount,
     loadRecords,
     addRecord,
-    copyPreviousRecord,
+    copyFromRecord,
     updateRecord,
     deleteRecord,
-    reorderRecords,
+    reorderFiltered,
     batchUpdateStatus,
     toggleSelect,
     selectAll,

@@ -18,6 +18,8 @@ export const useActivityStore = defineStore('activity', () => {
       const all = await dbGetAllActivities()
       if (all.length > 0) {
         activity.value = all[0]
+      } else {
+        await dbSaveActivity(activity.value)
       }
     }
     loaded.value = true
