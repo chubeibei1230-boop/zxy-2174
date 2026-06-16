@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { PlantRecord, ProofreadStatus, RiskIssue, FilterState } from '@/types'
+import type { PlantRecord, ProofreadStatus, RiskIssue, FilterState, PersonTaskSummary } from '@/types'
 import { createEmptyRecord, PROOFREAD_STATUSES } from '@/types'
 import {
   dbGetRecordsByActivity,
@@ -19,6 +19,7 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     status: '',
     riskLevel: '',
     search: '',
+    handoverStatus: 'all',
   })
 
   const filteredRecords = computed(() => {
@@ -31,6 +32,8 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
           return false
         if (filter.value.status && r.status !== filter.value.status) return false
         if (filter.value.riskLevel !== '' && r.riskLevel !== filter.value.riskLevel) return false
+        if (filter.value.handoverStatus === 'handed' && !r.isHandedOver) return false
+        if (filter.value.handoverStatus === 'notHanded' && r.isHandedOver) return false
         if (filter.value.search) {
           const q = filter.value.search.toLowerCase()
           return (
@@ -56,6 +59,101 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     records.value.forEach((r) => { counts[r.status]++ })
     return counts
   })
+
+  const handoverSummary = computed(() => {
+    const handedOverCount = records.value.filter((r) => r.isHandedOver).length
+    const totalCount = records.value.length
+    const notHandedOverCount = totalCount - handedOverCount
+    const progress = totalCount > 0 ? (handedOverCount / totalCount) * 100 : 0
+    return {
+      totalCount,
+      handedOverCount,
+      notHandedOverCount,
+      progress,
+    }
+  })
+
+  const personTaskSummaries = computed((): PersonTaskSummary[] => {
+    const summaryMap = new Map<string, PersonTaskSummary>()
+
+    records.value.forEach((r) => {
+      if (!r.responsiblePerson) return
+
+      if (!summaryMap.has(r.responsiblePerson)) {
+        summaryMap.set(r.responsiblePerson, {
+          personName: r.responsiblePerson,
+          totalCount: 0,
+          toBeSupplementedCount: 0,
+          pendingProofreadCount: 0,
+          printableCount: 0,
+          riskCount: 0,
+          handedOverCount: 0,
+          notHandedOverCount: 0,
+        })
+      }
+
+      const summary = summaryMap.get(r.responsiblePerson)!
+      summary.totalCount++
+
+      if (r.status === '待补充') summary.toBeSupplementedCount++
+      if (r.status === '待校对') summary.pendingProofreadCount++
+      if (r.status === '可打印') summary.printableCount++
+      if (r.riskLevel > 0) summary.riskCount++
+      if (r.isHandedOver) {
+        summary.handedOverCount++
+      } else {
+        summary.notHandedOverCount++
+      }
+    })
+
+    return Array.from(summaryMap.values()).sort((a, b) => b.totalCount - a.totalCount)
+  })
+
+  function getRecordsByPerson(personName: string): PlantRecord[] {
+    return records.value
+      .filter((r) => r.responsiblePerson === personName)
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+  }
+
+  async function markAsHandedOver(id: string, handoverNote?: string) {
+    const idx = records.value.findIndex((r) => r.id === id)
+    if (idx < 0) return
+    const updates: Partial<PlantRecord> = {
+      isHandedOver: true,
+      handedOverAt: Date.now(),
+    }
+    if (handoverNote !== undefined) {
+      updates.handoverNote = handoverNote
+    }
+    records.value[idx] = { ...records.value[idx], ...updates, updatedAt: Date.now() }
+    await dbSaveRecord(records.value[idx])
+  }
+
+  async function cancelHandover(id: string) {
+    const idx = records.value.findIndex((r) => r.id === id)
+    if (idx < 0) return
+    records.value[idx] = {
+      ...records.value[idx],
+      isHandedOver: false,
+      handedOverAt: null,
+      updatedAt: Date.now(),
+    }
+    await dbSaveRecord(records.value[idx])
+  }
+
+  async function updateMaintenanceInfo(id: string, maintenanceInfo: string) {
+    const idx = records.value.findIndex((r) => r.id === id)
+    if (idx < 0) return
+    records.value[idx] = { ...records.value[idx], maintenanceInfo, updatedAt: Date.now() }
+    await dbSaveRecord(records.value[idx])
+  }
+
+  async function updateHandoverNote(id: string, handoverNote: string) {
+    const idx = records.value.findIndex((r) => r.id === id)
+    if (idx < 0) return
+    records.value[idx] = { ...records.value[idx], handoverNote, updatedAt: Date.now() }
+    await dbSaveRecord(records.value[idx])
+  }
 
   const riskIssues = computed((): RiskIssue[] => {
     const issues: RiskIssue[] = []
@@ -256,6 +354,7 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
       status: '',
       riskLevel: '',
       search: '',
+      handoverStatus: 'all',
     }
   }
 
@@ -267,6 +366,8 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     filteredRecords,
     responsiblePersons,
     statusCounts,
+    handoverSummary,
+    personTaskSummaries,
     riskIssues,
     totalRiskCount,
     loadRecords,
@@ -281,5 +382,10 @@ export const usePlantRecordsStore = defineStore('plantRecords', () => {
     clearSelection,
     setFilter,
     resetFilter,
+    getRecordsByPerson,
+    markAsHandedOver,
+    cancelHandover,
+    updateMaintenanceInfo,
+    updateHandoverNote,
   }
 })

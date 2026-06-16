@@ -28,6 +28,10 @@ export interface PlantRecord {
   proofreadNote: string
   status: ProofreadStatus
   riskLevel: RiskLevel
+  maintenanceInfo: string
+  handoverNote: string
+  isHandedOver: boolean
+  handedOverAt: number | null
   createdAt: number
   updatedAt: number
 }
@@ -39,12 +43,24 @@ export interface RiskIssue {
   level: RiskLevel
 }
 
+export interface PersonTaskSummary {
+  personName: string
+  totalCount: number
+  toBeSupplementedCount: number
+  pendingProofreadCount: number
+  printableCount: number
+  riskCount: number
+  handedOverCount: number
+  notHandedOverCount: number
+}
+
 export interface FilterState {
   lightType: LightType | ''
   responsiblePerson: string
   status: ProofreadStatus | ''
   riskLevel: RiskLevel | ''
   search: string
+  handoverStatus: 'all' | 'handed' | 'notHanded'
 }
 
 export interface PrintBatchSummary {
@@ -97,6 +113,10 @@ export function createEmptyRecord(activityId: string, displayOrder: number): Pla
     proofreadNote: '',
     status: '待补充',
     riskLevel: 0,
+    maintenanceInfo: '',
+    handoverNote: '',
+    isHandedOver: false,
+    handedOverAt: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }

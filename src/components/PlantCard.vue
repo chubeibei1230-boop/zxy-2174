@@ -87,6 +87,19 @@ function getRiskColor(level: number): string {
       </div>
       <div class="card-header-right">
         <span
+          v-if="record.isHandedOver"
+          class="handover-tag handed"
+        >
+          <Check :size="10" />
+          已交接
+        </span>
+        <span
+          v-else
+          class="handover-tag not-handed"
+        >
+          待交接
+        </span>
+        <span
           class="status-tag"
           :class="statusColors[record.status]"
         >
@@ -277,6 +290,19 @@ function getRiskColor(level: number): string {
 
 .status-tag {
   @apply text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap;
+}
+
+.handover-tag {
+  @apply text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap
+    inline-flex items-center gap-1;
+}
+
+.handover-tag.handed {
+  @apply bg-emerald-100 text-emerald-700;
+}
+
+.handover-tag.not-handed {
+  @apply bg-stone-100 text-stone-500;
 }
 
 .expand-icon {

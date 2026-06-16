@@ -2,7 +2,7 @@ import { openDB, type IDBPDatabase } from 'idb'
 import type { Activity, PlantRecord, PrintBatch } from '@/types'
 
 const DB_NAME = 'plant_proofreading'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 let dbInstance: IDBPDatabase | null = null
 
@@ -25,6 +25,21 @@ async function getDB(): Promise<IDBPDatabase> {
           store.createIndex('activityId', 'activityId', { unique: false })
           store.createIndex('confirmedAt', 'confirmedAt', { unique: false })
         }
+      }
+      if (oldVersion < 3) {
+        const tx = db.transaction('plant_records', 'readwrite')
+        const store = tx.store
+        const request = store.openCursor()
+        request.then(function migrateCursor(cursor) {
+          if (!cursor) return
+          const record = cursor.value as any
+          if (record.maintenanceInfo === undefined) record.maintenanceInfo = ''
+          if (record.handoverNote === undefined) record.handoverNote = ''
+          if (record.isHandedOver === undefined) record.isHandedOver = false
+          if (record.handedOverAt === undefined) record.handedOverAt = null
+          cursor.update(record)
+          return cursor.continue().then(migrateCursor)
+        })
       }
     },
   })

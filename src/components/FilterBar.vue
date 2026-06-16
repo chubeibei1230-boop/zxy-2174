@@ -59,6 +59,15 @@ function onRiskLevelChange(e: Event) {
           {{ RISK_LABELS[lvl] }}
         </option>
       </select>
+      <select
+        :value="store.filter.handoverStatus"
+        class="filter-select"
+        @change="store.setFilter('handoverStatus', ($event.target as HTMLSelectElement).value)"
+      >
+        <option value="all">全部交接状态</option>
+        <option value="notHanded">未交接</option>
+        <option value="handed">已交接</option>
+      </select>
     </div>
     <button class="btn-reset" @click="store.resetFilter()">
       <FilterX :size="14" />

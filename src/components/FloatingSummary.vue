@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { usePlantRecordsStore } from '@/stores/plantRecords'
 import { useActivityStore } from '@/stores/activity'
 import { usePrintBatchStore } from '@/stores/printBatch'
@@ -19,11 +20,14 @@ import {
   Leaf,
   Package,
   FileCheck,
+  Users,
+  Handshake,
 } from 'lucide-vue-next'
 
 const recordStore = usePlantRecordsStore()
 const activityStore = useActivityStore()
 const printBatchStore = usePrintBatchStore()
+const router = useRouter()
 const { issues, highRiskIssues, mediumRiskIssues, lowRiskIssues } = useAutoCheck()
 const { exportCSV, exportPrintHTML, exportChecklist } = useExport()
 
@@ -56,6 +60,10 @@ function handleExportPrint() {
 
 function handleExportChecklist() {
   exportChecklist(recordStore.records, activityStore.activity, issues.value)
+}
+
+function goToResponsibleDashboard() {
+  router.push({ name: 'responsible-dashboard' })
 }
 </script>
 
@@ -111,6 +119,34 @@ function handleExportChecklist() {
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="handover-section">
+      <div class="handover-header">
+        <Handshake :size="14" class="text-emerald-500" />
+        <span>交接进度</span>
+      </div>
+      <div class="handover-stats">
+        <div class="handover-stat-item">
+          <span class="handover-stat-number">{{ recordStore.handoverSummary.handedOverCount }}</span>
+          <span class="handover-stat-label">已交接</span>
+        </div>
+        <div class="handover-stat-divider">/</div>
+        <div class="handover-stat-item">
+          <span class="handover-stat-number text-stone-400">{{ recordStore.handoverSummary.totalCount }}</span>
+          <span class="handover-stat-label">总计</span>
+        </div>
+      </div>
+      <div class="handover-progress-mini">
+        <div
+          class="handover-progress-fill-mini"
+          :style="{ width: recordStore.handoverSummary.progress + '%' }"
+        ></div>
+      </div>
+      <button class="btn-go-dashboard" @click="goToResponsibleDashboard">
+        <Users :size="14" />
+        <span>责任人看板</span>
+      </button>
     </div>
 
     <div class="selection-section" v-if="hasSelection">
@@ -300,6 +336,50 @@ function handleExportChecklist() {
 
 .more-risks {
   @apply text-xs text-stone-400 italic pl-4;
+}
+
+.handover-section {
+  @apply pt-3 border-t border-stone-100 space-y-2;
+}
+
+.handover-header {
+  @apply flex items-center gap-1.5 text-sm font-medium text-stone-700;
+}
+
+.handover-stats {
+  @apply flex items-center justify-center gap-2 py-1;
+}
+
+.handover-stat-item {
+  @apply flex flex-col items-center;
+}
+
+.handover-stat-number {
+  @apply text-lg font-bold text-emerald-600;
+  font-family: 'Playfair Display', serif;
+}
+
+.handover-stat-label {
+  @apply text-xs text-stone-400;
+}
+
+.handover-stat-divider {
+  @apply text-stone-300 text-sm;
+}
+
+.handover-progress-mini {
+  @apply h-1.5 bg-stone-100 rounded-full overflow-hidden;
+}
+
+.handover-progress-fill-mini {
+  @apply h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full
+    transition-all duration-300;
+}
+
+.btn-go-dashboard {
+  @apply w-full inline-flex items-center justify-center gap-1.5 px-3 py-2
+    rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50
+    hover:bg-emerald-100 transition-all cursor-pointer border border-emerald-200;
 }
 
 .selection-section {

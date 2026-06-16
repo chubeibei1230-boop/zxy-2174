@@ -102,6 +102,55 @@ export function useExport() {
       (s) => `<div class="stat-item"><span class="stat-label">${s}</span><span class="stat-value">${records.filter((r) => r.status === s).length}</span></div>`,
     ).join('')
 
+    const handedOverCount = records.filter((r) => r.isHandedOver).length
+    const notHandedOverCount = records.length - handedOverCount
+    const handoverProgress = records.length > 0 ? ((handedOverCount / records.length) * 100).toFixed(1) : '0'
+
+    const personMap = new Map<string, { total: number; handed: number; notHanded: number }>()
+    records.forEach((r) => {
+      if (!r.responsiblePerson) return
+      if (!personMap.has(r.responsiblePerson)) {
+        personMap.set(r.responsiblePerson, { total: 0, handed: 0, notHanded: 0 })
+      }
+      const p = personMap.get(r.responsiblePerson)!
+      p.total++
+      if (r.isHandedOver) {
+        p.handed++
+      } else {
+        p.notHanded++
+      }
+    })
+
+    let personHandoverSummary = ''
+    if (personMap.size > 0) {
+      const personRows = Array.from(personMap.entries())
+        .sort((a, b) => b[1].total - a[1].total)
+        .map(([name, data]) => {
+          const progress = data.total > 0 ? ((data.handed / data.total) * 100).toFixed(0) : '0'
+          return `<tr>
+            <td>${name}</td>
+            <td>${data.total}</td>
+            <td class="status-handed">${data.handed}</td>
+            <td class="status-not-handed">${data.notHanded}</td>
+            <td>
+              <div class="mini-progress">
+                <div class="mini-progress-fill" style="width: ${progress}%"></div>
+              </div>
+              <span class="mini-progress-text">${progress}%</span>
+            </td>
+          </tr>`
+        })
+        .join('')
+
+      personHandoverSummary = `
+        <h2>责任人交接情况</h2>
+        <table class="person-table">
+          <thead><tr><th>责任人</th><th>总数</th><th>已交接</th><th>待交接</th><th>完成进度</th></tr></thead>
+          <tbody>${personRows}</tbody>
+        </table>
+      `
+    }
+
     const issueList = issues.length
       ? issues
           .map(
@@ -123,6 +172,9 @@ export function useExport() {
         <td>${r.wateringReminder || '<em class="warn">缺失</em>'}</td>
         <td>${r.responsiblePerson}</td>
         <td class="status-${r.status}">${r.status}</td>
+        <td class="${r.isHandedOver ? 'handover-done' : 'handover-pending'}">
+          ${r.isHandedOver ? '✅ 已交接' : '⏳ 待交接'}
+        </td>
         <td>${r.proofreadNote}</td>
       </tr>`,
       )
@@ -138,10 +190,22 @@ export function useExport() {
     body { font-family: 'Noto Sans SC', sans-serif; padding: 24px; background: #fff; color: #333; }
     h1 { text-align: center; font-size: 22px; color: #1B4332; margin-bottom: 4px; }
     .meta { text-align: center; color: #666; margin-bottom: 20px; font-size: 13px; }
-    .stats { display: flex; gap: 16px; margin-bottom: 16px; justify-content: center; }
+    .stats { display: flex; gap: 16px; margin-bottom: 16px; justify-content: center; flex-wrap: wrap; }
     .stat-item { text-align: center; padding: 8px 16px; border: 1px solid #ddd; border-radius: 8px; }
     .stat-value { display: block; font-size: 24px; font-weight: bold; color: #1B4332; }
     .stat-label { font-size: 12px; color: #888; }
+    .handover-overview {
+      background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px;
+      padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .handover-overview-left { display: flex; align-items: center; gap: 12px; }
+    .handover-icon { font-size: 24px; }
+    .handover-text { font-size: 14px; color: #166534; font-weight: 500; }
+    .handover-subtext { font-size: 12px; color: #4ADE80; }
+    .handover-counts { display: flex; gap: 16px; }
+    .handover-count { text-align: center; }
+    .handover-count-value { font-size: 18px; font-weight: bold; color: #166534; }
+    .handover-count-label { font-size: 11px; color: #86EFAC; }
     h2 { font-size: 16px; color: #1B4332; margin: 16px 0 8px; border-bottom: 2px solid #52B788; padding-bottom: 4px; }
     .issue { padding: 6px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
     .issue.level-3 { background: #FDE8E8; color: #C53030; }
@@ -158,18 +222,57 @@ export function useExport() {
     .status-待校对 { color: #E9C46A; font-weight: bold; }
     .status-可打印 { color: #52B788; font-weight: bold; }
     .status-暂不展示 { color: #E76F51; }
+    .handover-done { color: #52B788; font-weight: bold; }
+    .handover-pending { color: #D97706; }
+    .person-table { margin-top: 8px; }
+    .status-handed { color: #52B788; font-weight: bold; }
+    .status-not-handed { color: #D97706; }
+    .mini-progress {
+      display: inline-block; width: 80px; height: 8px; background: #E5E7EB;
+      border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: 6px;
+    }
+    .mini-progress-fill { height: 100%; background: linear-gradient(90deg, #52B788, #2D6A4F); border-radius: 4px; }
+    .mini-progress-text { font-size: 11px; color: #6B7280; vertical-align: middle; }
     @media print { body { padding: 0; } }
   </style>
 </head>
 <body>
   <h1>📋 打印前校对清单</h1>
   <div class="meta">${activity.name || '植物插牌校对'} ${activity.date ? `| ${activity.date}` : ''} ${activity.location ? `| ${activity.location}` : ''}</div>
+  
+  <div class="handover-overview">
+    <div class="handover-overview-left">
+      <span class="handover-icon">🤝</span>
+      <div>
+        <div class="handover-text">交接进度概览</div>
+        <div class="handover-subtext">整体完成度 ${handoverProgress}%</div>
+      </div>
+    </div>
+    <div class="handover-counts">
+      <div class="handover-count">
+        <div class="handover-count-value">${handedOverCount}</div>
+        <div class="handover-count-label">已交接</div>
+      </div>
+      <div class="handover-count">
+        <div class="handover-count-value">${notHandedOverCount}</div>
+        <div class="handover-count-label">待交接</div>
+      </div>
+      <div class="handover-count">
+        <div class="handover-count-value">${records.length}</div>
+        <div class="handover-count-label">总计</div>
+      </div>
+    </div>
+  </div>
+
   <div class="stats">${statusSummary}</div>
+  
+  ${personHandoverSummary}
+  
   <h2>风险检查</h2>
   ${issueList}
   <h2>记录明细（共 ${records.length} 条）</h2>
   <table>
-    <thead><tr><th>序号</th><th>植物名</th><th>拉丁名</th><th>光照</th><th>浇水</th><th>责任人</th><th>状态</th><th>备注</th></tr></thead>
+    <thead><tr><th>序号</th><th>植物名</th><th>拉丁名</th><th>光照</th><th>浇水</th><th>责任人</th><th>状态</th><th>交接</th><th>备注</th></tr></thead>
     <tbody>${recordRows}</tbody>
   </table>
 </body>
