@@ -10,6 +10,7 @@ import FloatingSummary from '@/components/FloatingSummary.vue'
 import PrintBatchConfirmDialog from '@/components/PrintBatchConfirmDialog.vue'
 import DeliverySummaryView from '@/components/DeliverySummaryView.vue'
 import PrintBatchHistoryList from '@/components/PrintBatchHistoryList.vue'
+import DeliveryConfirmationSummary from '@/components/DeliveryConfirmationSummary.vue'
 
 const activityStore = useActivityStore()
 const recordStore = usePlantRecordsStore()
@@ -45,6 +46,7 @@ onMounted(async () => {
     <PrintBatchConfirmDialog />
     <DeliverySummaryView />
     <PrintBatchHistoryList />
+    <DeliveryConfirmationSummary />
   </div>
   <div v-else class="loading">
     <div class="loading-icon">🌿</div>

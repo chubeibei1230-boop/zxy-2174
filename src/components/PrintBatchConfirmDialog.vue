@@ -19,6 +19,9 @@ import {
   Clock,
   User,
   Edit3,
+  Handshake,
+  CheckCircle,
+  ChevronRight,
 } from 'lucide-vue-next'
 
 const printBatchStore = usePrintBatchStore()
@@ -105,12 +108,49 @@ function getRiskBgColor(level: number): string {
   return 'bg-emerald-50'
 }
 
+const printableHandedOver = computed(() => {
+  if (!batch.value) return 0
+  return batch.value.printableRecords.filter((r) => r.isHandedOver).length
+})
+
+const printableNotHandedOver = computed(() => {
+  if (!batch.value) return 0
+  return batch.value.printableRecords.filter((r) => !r.isHandedOver).length
+})
+
+const printableDeliveryProgress = computed(() => {
+  if (!batch.value || batch.value.printableRecords.length === 0) return 0
+  return (printableHandedOver.value / batch.value.printableRecords.length) * 100
+})
+
+const pendingDeliveryPersons = computed(() => {
+  if (!batch.value) return []
+  const personMap = new Map<string, number>()
+  batch.value.printableRecords.forEach((r) => {
+    if (!r.isHandedOver && r.responsiblePerson) {
+      personMap.set(r.responsiblePerson, (personMap.get(r.responsiblePerson) || 0) + 1)
+    }
+  })
+  return Array.from(personMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+})
+
 async function handleConfirm() {
-  await printBatchStore.confirmBatch(confirmedByName.value || '负责人')
+  await printBatchStore.confirmBatchWithDeliverySummary(confirmedByName.value || '负责人')
 }
 
 function handleCancel() {
   printBatchStore.closeConfirmDialog()
+}
+
+function goToDeliverySummary() {
+  printBatchStore.closeConfirmDialog()
+  printBatchStore.createAndOpenDeliverySummary(
+    batch.value!.activitySnapshot,
+    batch.value!.recordsSnapshot,
+    batch.value!.issuesSnapshot,
+  )
 }
 </script>
 
@@ -278,6 +318,63 @@ function handleCancel() {
             </div>
           </div>
 
+          <div class="section delivery-section">
+            <h3 class="section-title">
+              <Handshake :size="16" class="text-emerald-600" />
+              责任人交付确认
+            </h3>
+            <div class="delivery-card" :class="{ 'all-delivered': printableNotHandedOver === 0 }">
+              <div class="delivery-progress-header">
+                <div class="delivery-progress-info">
+                  <div class="delivery-progress-stats">
+                    <span class="stat-delivered">
+                      <CheckCircle :size="14" class="text-emerald-500" />
+                      {{ printableHandedOver }} 已交付
+                    </span>
+                    <span class="stat-pending" v-if="printableNotHandedOver > 0">
+                      {{ printableNotHandedOver }} 待交付
+                    </span>
+                    <span class="stat-total">
+                      共 {{ batch.printableRecords.length }} 条可打印
+                    </span>
+                  </div>
+                  <span class="delivery-percent" :class="printableNotHandedOver === 0 ? 'text-emerald-600' : 'text-amber-600'">
+                    {{ printableDeliveryProgress.toFixed(1) }}%
+                  </span>
+                </div>
+                <div class="delivery-progress-bar">
+                  <div
+                    class="delivery-progress-fill"
+                    :class="printableNotHandedOver === 0 ? 'bg-emerald-500' : 'bg-amber-500'"
+                    :style="{ width: printableDeliveryProgress + '%' }"
+                  ></div>
+                </div>
+              </div>
+
+              <div v-if="pendingDeliveryPersons.length > 0" class="pending-delivery-persons">
+                <div class="pending-header">
+                  <AlertTriangle :size="12" class="text-amber-500" />
+                  <span>待交付责任人</span>
+                </div>
+                <div class="pending-persons-tags">
+                  <span
+                    v-for="person in pendingDeliveryPersons"
+                    :key="person.name"
+                    class="pending-person-tag"
+                  >
+                    {{ person.name }} ({{ person.count }})
+                  </span>
+                </div>
+              </div>
+
+              <button class="btn-view-delivery-summary" @click="goToDeliverySummary">
+                <FileText :size="14" />
+                <span>查看完整交付确认摘要</span>
+                <ChevronRight :size="14" />
+              </button>
+            </div>
+          </div>
+
           <div class="section printable-section">
             <h3 class="section-title">
               <Printer :size="16" class="text-emerald-600" />
@@ -372,9 +469,14 @@ function handleCancel() {
             />
           </div>
 
-          <div v-if="printBatchStore.hasUnconfirmedRisks || printBatchStore.hasIncompleteRecords" class="warning-box">
+          <div v-if="printBatchStore.hasUnconfirmedRisks || printBatchStore.hasIncompleteRecords || printableNotHandedOver > 0" class="warning-box">
             <AlertTriangle :size="18" class="text-amber-500" />
             <div class="warning-content">
+              <p v-if="printableNotHandedOver > 0">
+                <strong>注意：</strong>当前批次有
+                <span class="text-amber-600">{{ printableNotHandedOver }} 条可打印记录未完成责任人交付确认</span>
+                ，建议先完成所有交付确认后再打印。
+              </p>
               <p v-if="printBatchStore.hasUnconfirmedRisks">
                 <strong>注意：</strong>当前批次存在
                 <span v-if="batch.summary.highRiskCount > 0" class="text-red-600">{{ batch.summary.highRiskCount }} 个高风险</span>
@@ -386,6 +488,15 @@ function handleCancel() {
                 <strong>注意：</strong>当前批次存在
                 <span class="text-amber-600">{{ batch.summary.pendingCount + batch.summary.toBeSupplementedCount }} 条未完成记录</span>
                 （待校对或待补充），这些记录将不会被打印。
+              </p>
+            </div>
+          </div>
+
+          <div v-if="printableNotHandedOver === 0 && batch.printableRecords.length > 0" class="success-box">
+            <CheckCircle :size="18" class="text-emerald-500" />
+            <div class="success-content">
+              <p>
+                <strong>太棒了！</strong>所有 {{ batch.printableRecords.length }} 条可打印记录均已完成责任人交付确认，可以放心打印。
               </p>
             </div>
           </div>
@@ -681,12 +792,87 @@ function handleCancel() {
   @apply border-emerald-400 ring-1 ring-emerald-400/30 bg-white;
 }
 
+.delivery-card {
+  @apply rounded-xl border border-stone-200 p-4 space-y-4 bg-stone-50;
+}
+
+.delivery-card.all-delivered {
+  @apply bg-emerald-50 border-emerald-200;
+}
+
+.delivery-progress-header {
+  @apply space-y-2;
+}
+
+.delivery-progress-info {
+  @apply flex items-center justify-between;
+}
+
+.delivery-progress-stats {
+  @apply flex items-center gap-3 text-sm;
+}
+
+.stat-delivered {
+  @apply inline-flex items-center gap-1.5 font-medium text-emerald-700;
+}
+
+.stat-pending {
+  @apply text-amber-600 font-medium;
+}
+
+.stat-total {
+  @apply text-stone-500;
+}
+
+.delivery-percent {
+  @apply text-lg font-bold;
+  font-family: 'Playfair Display', serif;
+}
+
+.delivery-progress-bar {
+  @apply h-2.5 bg-stone-200 rounded-full overflow-hidden;
+}
+
+.delivery-progress-fill {
+  @apply h-full rounded-full transition-all duration-500;
+}
+
+.pending-delivery-persons {
+  @apply pt-3 border-t border-stone-200 space-y-2;
+}
+
+.pending-header {
+  @apply flex items-center gap-1.5 text-xs font-medium text-stone-600;
+}
+
+.pending-persons-tags {
+  @apply flex flex-wrap gap-1.5;
+}
+
+.pending-person-tag {
+  @apply text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-medium;
+}
+
+.btn-view-delivery-summary {
+  @apply w-full inline-flex items-center justify-center gap-1.5 px-3 py-2
+    rounded-lg text-xs font-medium text-emerald-700 bg-white
+    hover:bg-emerald-50 transition-all cursor-pointer border border-emerald-200;
+}
+
 .warning-box {
   @apply flex items-start gap-3 p-4 bg-amber-50 rounded-xl border border-amber-200;
 }
 
 .warning-content {
   @apply flex-1 text-sm text-stone-700 space-y-1;
+}
+
+.success-box {
+  @apply flex items-start gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200;
+}
+
+.success-content {
+  @apply flex-1 text-sm text-emerald-800;
 }
 
 .dialog-footer {

@@ -1,4 +1,4 @@
-import type { PlantRecord, Activity, RiskIssue } from '@/types'
+import type { PlantRecord, Activity, RiskIssue, DeliveryConfirmationSummary } from '@/types'
 import { PROOFREAD_STATUSES } from '@/types'
 
 export function useExport() {
@@ -279,6 +279,303 @@ export function useExport() {
 </html>`
   }
 
+  function exportDeliveryConfirmation(summary: DeliveryConfirmationSummary) {
+    const html = generateDeliveryConfirmationHTML(summary)
+    const win = window.open('', '_blank')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      win.focus()
+      setTimeout(() => win.print(), 500)
+    }
+  }
+
+  function generateDeliveryConfirmationHTML(summary: DeliveryConfirmationSummary): string {
+    function formatDate(timestamp: number): string {
+      return new Date(timestamp).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    }
+
+    const activity = summary.activityInfo
+    const personRows = summary.personSummaries
+      .map(
+        (ps) => `
+      <tr>
+        <td>${ps.personName}</td>
+        <td>${ps.totalCount}</td>
+        <td>${ps.printableCount}</td>
+        <td class="status-handed">${ps.handedOverCount}</td>
+        <td class="status-not-handed">${ps.notHandedOverCount}</td>
+        <td>
+          <div class="mini-progress">
+            <div class="mini-progress-fill" style="width: ${ps.completionRate}%; ${ps.completionRate >= 100 ? 'background: linear-gradient(90deg, #52B788, #2D6A4F);' : ps.completionRate >= 50 ? 'background: linear-gradient(90deg, #F59E0B, #D97706);' : 'background: linear-gradient(90deg, #EF4444, #DC2626);'}"></div>
+          </div>
+          <span class="mini-progress-text" style="${ps.completionRate >= 100 ? 'color: #166534;' : ps.completionRate >= 50 ? 'color: #92400E;' : 'color: #991B1B;'}">${ps.completionRate.toFixed(1)}%</span>
+        </td>
+      </tr>`,
+      )
+      .join('')
+
+    const unhandedRows = summary.unhandedReasons.length
+      ? summary.unhandedReasons
+          .map(
+            (ur) => `
+        <tr>
+          <td>${ur.plantName}</td>
+          <td>${ur.personName}</td>
+          <td class="unhanded-reason">${ur.reason}</td>
+        </tr>`,
+          )
+          .join('')
+      : '<tr><td colspan="3" class="empty-row">✅ 所有可打印记录均已完成交付确认</td></tr>'
+
+    const reminderItems = summary.printReminders
+      .map(
+        (r) => `
+      <div class="reminder-item ${r.includes('高风险') ? 'reminder-high' : r.includes('中风险') || r.includes('缺少') ? 'reminder-medium' : r.includes('已通过') ? 'reminder-success' : ''}">
+        <span class="reminder-icon">${r.includes('高风险') ? '🔴' : r.includes('中风险') || r.includes('缺少') ? '🟡' : r.includes('暂不展示') || r.includes('尚未完成') ? 'ℹ️' : '✅'}</span>
+        <span>${r}</span>
+      </div>`,
+      )
+      .join('')
+
+    const statusBadge = summary.allPrintableDelivered
+      ? '<span class="badge badge-success">全部已交付</span>'
+      : '<span class="badge badge-warning">待交付</span>'
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>${activity.name || '植物插牌'} - 交付确认闭环摘要</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Noto Sans SC', sans-serif; padding: 24px; background: #fff; color: #333; }
+    .header { text-align: center; margin-bottom: 24px; }
+    h1 { font-size: 22px; color: #1B4332; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .header-icon { font-size: 24px; }
+    .meta { color: #666; font-size: 13px; }
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; margin-left: 8px; }
+    .badge-success { background: #D1FAE5; color: #065F46; }
+    .badge-warning { background: #FEF3C7; color: #92400E; }
+    
+    .activity-card {
+      background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 12px;
+      padding: 16px; margin-bottom: 20px;
+    }
+    .activity-name { font-size: 18px; font-weight: bold; color: #166534; margin-bottom: 8px; }
+    .activity-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: #065F46; }
+    .meta-item { display: flex; align-items: center; gap: 4px; }
+    
+    .overview-section {
+      background: linear-gradient(135deg, #ECFDF5, #CCFBF1);
+      border: 1px solid #6EE7B7; border-radius: 12px;
+      padding: 20px; margin-bottom: 20px;
+    }
+    .overview-title { font-size: 15px; font-weight: 600; color: #065F46; margin-bottom: 16px; }
+    .overview-stats { display: flex; justify-content: space-around; gap: 16px; flex-wrap: wrap; }
+    .overview-stat { text-align: center; flex: 1; min-width: 100px; }
+    .stat-number { font-size: 28px; font-weight: bold; font-family: 'Playfair Display', serif; }
+    .stat-number.printable { color: #059669; }
+    .stat-number.handed { color: #10B981; }
+    .stat-number.pending { color: #D97706; }
+    .stat-label { font-size: 12px; color: #6B7280; margin-top: 4px; }
+    
+    .progress-ring-container {
+      display: flex; justify-content: center; margin-bottom: 20px;
+    }
+    .progress-ring {
+      width: 120px; height: 120px; position: relative;
+    }
+    .progress-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .progress-ring-bg { fill: none; stroke: #E5E7EB; stroke-width: 8; }
+    .progress-ring-fill {
+      fill: none; stroke-width: 8; stroke-linecap: round;
+      stroke: ${summary.overallCompletionRate >= 100 ? '#10B981' : summary.overallCompletionRate >= 50 ? '#F59E0B' : '#EF4444'};
+      stroke-dasharray: ${2 * Math.PI * 45};
+      stroke-dashoffset: ${2 * Math.PI * 45 * (1 - summary.overallCompletionRate / 100)};
+      transition: stroke-dashoffset 1s ease;
+    }
+    .progress-text {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .progress-percent { font-size: 24px; font-weight: bold; color: ${summary.overallCompletionRate >= 100 ? '#059669' : summary.overallCompletionRate >= 50 ? '#D97706' : '#DC2626'}; }
+    .progress-label { font-size: 11px; color: #6B7280; }
+    
+    h2 { font-size: 16px; color: #1B4332; margin: 20px 0 10px; border-bottom: 2px solid #52B788; padding-bottom: 6px; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px; }
+    th { background: #1B4332; color: #fff; padding: 8px 10px; text-align: left; }
+    td { padding: 7px 10px; border-bottom: 1px solid #E5E7EB; }
+    tr:nth-child(even) { background: #F9FAFB; }
+    .status-handed { color: #10B981; font-weight: bold; }
+    .status-not-handed { color: #D97706; font-weight: bold; }
+    .unhanded-reason { color: #92400E; }
+    .empty-row { text-align: center; color: #10B981; padding: 16px; font-weight: 500; }
+    
+    .mini-progress {
+      display: inline-block; width: 80px; height: 8px; background: #E5E7EB;
+      border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: 6px;
+    }
+    .mini-progress-fill { height: 100%; background: linear-gradient(90deg, #52B788, #2D6A4F); border-radius: 4px; }
+    .mini-progress-text { font-size: 11px; color: #6B7280; vertical-align: middle; font-weight: 500; }
+    
+    .reminder-list { space-y: 8px; }
+    .reminder-item {
+      display: flex; gap: 8px; padding: 10px 12px; border-radius: 8px;
+      margin-bottom: 8px; font-size: 13px; align-items: flex-start;
+    }
+    .reminder-high { background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; }
+    .reminder-medium { background: #FFFBEB; border: 1px solid #FDE68A; color: #92400E; }
+    .reminder-success { background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; }
+    .reminder-item:not(.reminder-high):not(.reminder-medium):not(.reminder-success) {
+      background: #F9FAFB; border: 1px solid #E5E7EB; color: #374151;
+    }
+    .reminder-icon { flex-shrink: 0; font-size: 14px; }
+    
+    .alert-section {
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
+      display: flex; gap: 12px; align-items: flex-start;
+    }
+    .alert-warning { background: #FFFBEB; border: 1px solid #FDE68A; }
+    .alert-info { background: #EFF6FF; border: 1px solid #BFDBFE; }
+    .alert-success { background: #F0FDF4; border: 1px solid #BBF7D0; }
+    .alert-icon { font-size: 20px; flex-shrink: 0; }
+    .alert-content h4 { font-size: 14px; margin-bottom: 4px; }
+    .alert-content p { font-size: 12px; opacity: 0.8; }
+    
+    .footer {
+      margin-top: 32px; padding-top: 16px; border-top: 1px solid #E5E7EB;
+      text-align: center; font-size: 11px; color: #9CA3AF;
+    }
+    
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <span class="header-icon">🤝</span>
+      交付确认闭环摘要
+      ${statusBadge}
+    </h1>
+    <div class="meta">
+      生成时间：${formatDate(summary.generatedAt)} | 生成人：${summary.generatedBy}
+    </div>
+  </div>
+
+  <div class="activity-card">
+    <div class="activity-name">${activity.name || '未命名活动'}</div>
+    <div class="activity-meta">
+      ${activity.date ? `<span class="meta-item">📅 ${activity.date}</span>` : ''}
+      ${activity.location ? `<span class="meta-item">📍 ${activity.location}</span>` : ''}
+      ${activity.participantCount ? `<span class="meta-item">👥 ${activity.participantCount} 人参与</span>` : ''}
+    </div>
+  </div>
+
+  <div class="overview-section">
+    <div class="overview-title">整体交付进度</div>
+    <div class="progress-ring-container">
+      <div class="progress-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="progress-ring-bg" cx="50" cy="50" r="45" />
+          <circle class="progress-ring-fill" cx="50" cy="50" r="45" />
+        </svg>
+        <div class="progress-text">
+          <span class="progress-percent">${summary.overallCompletionRate.toFixed(1)}%</span>
+          <span class="progress-label">完成率</span>
+        </div>
+      </div>
+    </div>
+    <div class="overview-stats">
+      <div class="overview-stat">
+        <div class="stat-number printable">${summary.totalPrintableCount}</div>
+        <div class="stat-label">可打印总数</div>
+      </div>
+      <div class="overview-stat">
+        <div class="stat-number handed">${summary.totalHandedOverCount}</div>
+        <div class="stat-label">已交付</div>
+      </div>
+      <div class="overview-stat">
+        <div class="stat-number pending">${summary.totalNotHandedOverCount}</div>
+        <div class="stat-label">待交付</div>
+      </div>
+    </div>
+  </div>
+
+  ${summary.unhandedReasons.length > 0 ? `
+  <div class="alert-section alert-warning">
+    <span class="alert-icon">⚠️</span>
+    <div class="alert-content">
+      <h4>存在未交付项</h4>
+      <p>还有 ${summary.unhandedReasons.length} 条记录未完成交付确认，请查看"未交付项"部分</p>
+    </div>
+  </div>` : ''}
+
+  ${summary.printReminders.length > 0 ? `
+  <div class="alert-section alert-info">
+    <span class="alert-icon">ℹ️</span>
+    <div class="alert-content">
+      <h4>打印前提醒</h4>
+      <p>有 ${summary.printReminders.length} 项注意事项需要关注，请查看"打印前提醒"部分</p>
+    </div>
+  </div>` : ''}
+
+  ${summary.allPrintableDelivered ? `
+  <div class="alert-section alert-success">
+    <span class="alert-icon">✅</span>
+    <div class="alert-content">
+      <h4>全部已交付</h4>
+      <p>所有可打印记录均已完成责任人交付确认，可以进行打印</p>
+    </div>
+  </div>` : ''}
+
+  <h2>责任人完成情况</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>责任人</th>
+        <th>负责总数</th>
+        <th>可打印数</th>
+        <th>已交付</th>
+        <th>待交付</th>
+        <th>完成率</th>
+      </tr>
+    </thead>
+    <tbody>${personRows}</tbody>
+  </table>
+
+  <h2>未交付项清单 (${summary.unhandedReasons.length} 项)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>植物名</th>
+        <th>责任人</th>
+        <th>未交付原因</th>
+      </tr>
+    </thead>
+    <tbody>${unhandedRows}</tbody>
+  </table>
+
+  <h2>打印前提醒 (${summary.printReminders.length} 项)</h2>
+  <div class="reminder-list">${reminderItems}</div>
+
+  <div class="footer">
+    本摘要由植物插牌校对系统自动生成
+  </div>
+</body>
+</html>`
+  }
+
   function downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -290,5 +587,5 @@ export function useExport() {
     URL.revokeObjectURL(url)
   }
 
-  return { exportCSV, exportPrintHTML, exportChecklist }
+  return { exportCSV, exportPrintHTML, exportChecklist, exportDeliveryConfirmation }
 }

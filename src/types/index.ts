@@ -63,6 +63,43 @@ export interface FilterState {
   handoverStatus: 'all' | 'handed' | 'notHanded'
 }
 
+export interface DeliveryConfirmationItem {
+  recordId: string
+  plantName: string
+  displayOrder: number
+  responsiblePerson: string
+  status: ProofreadStatus
+  maintenanceInfo: string
+  handoverNote: string
+  isHandedOver: boolean
+  handedOverAt: number | null
+  unhandedReason?: string
+}
+
+export interface PersonDeliverySummary {
+  personName: string
+  totalCount: number
+  printableCount: number
+  handedOverCount: number
+  notHandedOverCount: number
+  completionRate: number
+  items: DeliveryConfirmationItem[]
+}
+
+export interface DeliveryConfirmationSummary {
+  generatedAt: number
+  generatedBy: string
+  activityInfo: Activity
+  personSummaries: PersonDeliverySummary[]
+  overallCompletionRate: number
+  totalPrintableCount: number
+  totalHandedOverCount: number
+  totalNotHandedOverCount: number
+  unhandedReasons: Array<{ recordId: string; plantName: string; personName: string; reason: string }>
+  printReminders: string[]
+  allPrintableDelivered: boolean
+}
+
 export interface PrintBatchSummary {
   totalRecords: number
   printableCount: number
@@ -87,6 +124,7 @@ export interface PrintBatch {
   confirmedAt: number
   confirmedBy: string
   version: string
+  deliveryConfirmationSummary?: DeliveryConfirmationSummary
 }
 
 export const LIGHT_TYPES: LightType[] = ['全日照', '半日照', '耐阴', '喜散射光']

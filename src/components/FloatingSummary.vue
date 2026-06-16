@@ -22,6 +22,10 @@ import {
   FileCheck,
   Users,
   Handshake,
+  FileText,
+  ChevronRight,
+  CheckCircle,
+  Clock,
 } from 'lucide-vue-next'
 
 const recordStore = usePlantRecordsStore()
@@ -30,6 +34,18 @@ const printBatchStore = usePrintBatchStore()
 const router = useRouter()
 const { issues, highRiskIssues, mediumRiskIssues, lowRiskIssues } = useAutoCheck()
 const { exportCSV, exportPrintHTML, exportChecklist } = useExport()
+
+const printableNotHandedOver = computed(() => {
+  return recordStore.records.filter((r) => r.status === '可打印' && !r.isHandedOver).length
+})
+
+const overloadedPersons = computed(() => {
+  return recordStore.personTaskSummaries.filter((p) => p.notHandedOverCount > 0)
+})
+
+const atRiskPersons = computed(() => {
+  return recordStore.personTaskSummaries.filter((p) => p.riskCount > 0)
+})
 
 function handleCreatePrintBatch() {
   printBatchStore.createPreviewBatch(
@@ -41,6 +57,14 @@ function handleCreatePrintBatch() {
 
 function handleViewHistory() {
   printBatchStore.openHistoryListView()
+}
+
+function handleViewDeliveryConfirmation() {
+  printBatchStore.createAndOpenDeliverySummary(
+    activityStore.activity,
+    recordStore.records,
+    issues.value,
+  )
 }
 
 const hasSelection = computed(() => recordStore.selectedIds.size > 0)
@@ -124,12 +148,12 @@ function goToResponsibleDashboard() {
     <div class="handover-section">
       <div class="handover-header">
         <Handshake :size="14" class="text-emerald-500" />
-        <span>交接进度</span>
+        <span>责任人交付确认</span>
       </div>
       <div class="handover-stats">
         <div class="handover-stat-item">
           <span class="handover-stat-number">{{ recordStore.handoverSummary.handedOverCount }}</span>
-          <span class="handover-stat-label">已交接</span>
+          <span class="handover-stat-label">已交付</span>
         </div>
         <div class="handover-stat-divider">/</div>
         <div class="handover-stat-item">
@@ -143,10 +167,66 @@ function goToResponsibleDashboard() {
           :style="{ width: recordStore.handoverSummary.progress + '%' }"
         ></div>
       </div>
-      <button class="btn-go-dashboard" @click="goToResponsibleDashboard">
-        <Users :size="14" />
-        <span>责任人看板</span>
-      </button>
+      <div class="handover-progress-text">
+        <span class="progress-percent">{{ recordStore.handoverSummary.progress.toFixed(1) }}%</span>
+        <span class="progress-text-sep">·</span>
+        <span :class="printableNotHandedOver > 0 ? 'text-amber-600' : 'text-emerald-600'">
+          {{ printableNotHandedOver > 0 ? `${printableNotHandedOver} 条可打印待交付` : '全部已交付' }}
+        </span>
+      </div>
+
+      <div v-if="overloadedPersons.length > 0" class="pending-persons-section">
+        <div class="pending-persons-header">
+          <Clock :size="12" class="text-amber-500" />
+          <span>待交付责任人 ({{ overloadedPersons.length }})</span>
+        </div>
+        <div class="pending-persons-list">
+          <div
+            v-for="person in overloadedPersons.slice(0, 3)"
+            :key="person.personName"
+            class="pending-person-item"
+          >
+            <span class="pending-person-name">{{ person.personName }}</span>
+            <span class="pending-person-count">{{ person.notHandedOverCount }} 条</span>
+          </div>
+          <div v-if="overloadedPersons.length > 3" class="pending-person-more">
+            还有 {{ overloadedPersons.length - 3 }} 人...
+          </div>
+        </div>
+      </div>
+
+      <div v-if="atRiskPersons.length > 0" class="risk-persons-section">
+        <div class="risk-persons-header">
+          <AlertTriangle :size="12" class="text-amber-500" />
+          <span>风险责任人 ({{ atRiskPersons.length }})</span>
+        </div>
+        <div class="risk-persons-list">
+          <div
+            v-for="person in atRiskPersons.slice(0, 3)"
+            :key="person.personName"
+            class="risk-person-item"
+          >
+            <span class="risk-person-name">{{ person.personName }}</span>
+            <span class="risk-person-count">{{ person.riskCount }} 项</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="handover-actions">
+        <button class="btn-go-dashboard" @click="goToResponsibleDashboard">
+          <Users :size="14" />
+          <span>责任人看板</span>
+        </button>
+        <button
+          class="btn-delivery-summary"
+          :class="{ 'all-delivered': printableNotHandedOver === 0 }"
+          @click="handleViewDeliveryConfirmation"
+        >
+          <FileText :size="14" />
+          <span>交付确认摘要</span>
+          <ChevronRight :size="14" />
+        </button>
+      </div>
     </div>
 
     <div class="selection-section" v-if="hasSelection">
@@ -382,10 +462,79 @@ function goToResponsibleDashboard() {
     transition-all duration-300;
 }
 
+.handover-progress-text {
+  @apply flex items-center justify-center gap-1 mt-2 text-xs;
+}
+
+.progress-percent {
+  @apply font-bold text-emerald-600;
+}
+
+.progress-text-sep {
+  @apply text-stone-300;
+}
+
+.pending-persons-section,
+.risk-persons-section {
+  @apply mt-3 pt-3 border-t border-stone-100 space-y-2;
+}
+
+.pending-persons-header,
+.risk-persons-header {
+  @apply flex items-center gap-1.5 text-xs font-medium text-stone-600;
+}
+
+.pending-persons-list,
+.risk-persons-list {
+  @apply space-y-1;
+}
+
+.pending-person-item,
+.risk-person-item {
+  @apply flex items-center justify-between text-xs px-2 py-1.5 rounded-md;
+}
+
+.pending-person-item {
+  @apply bg-amber-50 text-amber-700;
+}
+
+.risk-person-item {
+  @apply bg-red-50 text-red-600;
+}
+
+.pending-person-name,
+.risk-person-name {
+  @apply truncate font-medium;
+}
+
+.pending-person-count,
+.risk-person-count {
+  @apply font-bold shrink-0 ml-2;
+}
+
+.pending-person-more {
+  @apply text-xs text-stone-400 text-center py-1;
+}
+
+.handover-actions {
+  @apply mt-3 pt-3 border-t border-stone-100 space-y-2;
+}
+
 .btn-go-dashboard {
   @apply w-full inline-flex items-center justify-center gap-1.5 px-3 py-2
     rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50
     hover:bg-emerald-100 transition-all cursor-pointer border border-emerald-200;
+}
+
+.btn-delivery-summary {
+  @apply w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5
+    rounded-lg text-xs font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500
+    hover:from-amber-600 hover:to-orange-600 transition-all cursor-pointer
+    border border-amber-400 shadow-sm;
+}
+
+.btn-delivery-summary.all-delivered {
+  @apply from-emerald-500 to-teal-500 border-emerald-400;
 }
 
 .selection-section {
