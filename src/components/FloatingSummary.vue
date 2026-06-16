@@ -1,0 +1,340 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { usePlantRecordsStore } from '@/stores/plantRecords'
+import { useActivityStore } from '@/stores/activity'
+import { useAutoCheck } from '@/composables/useAutoCheck'
+import { useExport } from '@/composables/useExport'
+import { PROOFREAD_STATUSES } from '@/types'
+import type { ProofreadStatus } from '@/types'
+import {
+  FileDown,
+  Printer,
+  ClipboardList,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  Leaf,
+} from 'lucide-vue-next'
+
+const recordStore = usePlantRecordsStore()
+const activityStore = useActivityStore()
+const { issues, highRiskIssues, mediumRiskIssues, lowRiskIssues } = useAutoCheck()
+const { exportCSV, exportPrintHTML, exportChecklist } = useExport()
+
+const hasSelection = computed(() => recordStore.selectedIds.size > 0)
+
+async function batchMark(status: ProofreadStatus) {
+  if (!hasSelection.value) return
+  await recordStore.batchUpdateStatus(Array.from(recordStore.selectedIds), status)
+}
+
+function handleExportCSV() {
+  exportCSV(recordStore.records, activityStore.activity)
+}
+
+function handleExportPrint() {
+  exportPrintHTML(recordStore.records, activityStore.activity)
+}
+
+function handleExportChecklist() {
+  exportChecklist(recordStore.records, activityStore.activity, issues.value)
+}
+</script>
+
+<template>
+  <div class="floating-summary">
+    <div class="summary-header">
+      <Leaf :size="18" class="text-emerald-600" />
+      <h3 class="summary-title">校对摘要</h3>
+    </div>
+
+    <div class="summary-stats">
+      <div class="stat-big">
+        <span class="stat-number">{{ recordStore.records.length }}</span>
+        <span class="stat-label">总记录</span>
+      </div>
+    </div>
+
+    <div class="status-grid">
+      <div v-for="s in PROOFREAD_STATUSES" :key="s" class="status-row">
+        <span class="status-dot" :class="'dot-' + s"></span>
+        <span class="status-name">{{ s }}</span>
+        <span class="status-count">{{ recordStore.statusCounts[s] }}</span>
+      </div>
+    </div>
+
+    <div class="risk-section" v-if="issues.length > 0">
+      <div class="risk-header">
+        <AlertTriangle :size="14" class="text-amber-500" />
+        <span>风险检查 ({{ issues.length }})</span>
+      </div>
+      <div class="risk-list">
+        <div v-if="highRiskIssues.length > 0" class="risk-group">
+          <span class="risk-badge risk-high">高风险 {{ highRiskIssues.length }}</span>
+        </div>
+        <div v-if="mediumRiskIssues.length > 0" class="risk-group">
+          <span class="risk-badge risk-medium">中风险 {{ mediumRiskIssues.length }}</span>
+        </div>
+        <div v-if="lowRiskIssues.length > 0" class="risk-group">
+          <span class="risk-badge risk-low">低风险 {{ lowRiskIssues.length }}</span>
+        </div>
+        <div class="risk-details">
+          <div
+            v-for="(issue, idx) in issues.slice(0, 5)"
+            :key="idx"
+            class="risk-item"
+          >
+            <AlertCircle v-if="issue.level >= 2" :size="12" class="shrink-0" :class="issue.level >= 3 ? 'text-red-500' : 'text-amber-500'" />
+            <Info v-else :size="12" class="shrink-0 text-orange-400" />
+            <span class="risk-msg">{{ issue.message }}</span>
+          </div>
+          <div v-if="issues.length > 5" class="more-risks">
+            还有 {{ issues.length - 5 }} 项...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="selection-section" v-if="hasSelection">
+      <div class="selection-info">
+        已选择 {{ recordStore.selectedIds.size }} 条
+      </div>
+      <div class="batch-buttons">
+        <button
+          v-for="s in PROOFREAD_STATUSES"
+          :key="s"
+          class="btn-batch"
+          :class="'batch-' + s"
+          @click="batchMark(s)"
+        >
+          {{ s }}
+        </button>
+      </div>
+      <div class="selection-actions">
+        <button class="btn-select-all" @click="recordStore.selectAll()">
+          <CheckSquare :size="12" />
+          全选
+        </button>
+        <button class="btn-select-clear" @click="recordStore.clearSelection()">
+          <Square :size="12" />
+          清空
+        </button>
+      </div>
+    </div>
+
+    <div class="select-all-section" v-else>
+      <button class="btn-select-all" @click="recordStore.selectAll()">
+        <CheckSquare :size="12" />
+        全选当前列表
+      </button>
+    </div>
+
+    <div class="export-section">
+      <h4 class="export-title">导出</h4>
+      <div class="export-buttons">
+        <button class="btn-export" @click="handleExportCSV">
+          <FileDown :size="14" />
+          <span>CSV</span>
+        </button>
+        <button class="btn-export" @click="handleExportPrint">
+          <Printer :size="14" />
+          <span>打印版</span>
+        </button>
+        <button class="btn-export btn-checklist" @click="handleExportChecklist">
+          <ClipboardList :size="14" />
+          <span>校对清单</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.floating-summary {
+  @apply bg-white rounded-2xl border border-stone-200 shadow-sm p-5
+    sticky top-4 space-y-4;
+  min-width: 240px;
+  max-width: 280px;
+}
+
+.summary-header {
+  @apply flex items-center gap-2;
+}
+
+.summary-title {
+  @apply text-base font-bold text-stone-800;
+  font-family: 'Playfair Display', serif;
+}
+
+.summary-stats {
+  @apply flex justify-center py-2;
+}
+
+.stat-big {
+  @apply flex flex-col items-center;
+}
+
+.stat-number {
+  @apply text-3xl font-bold text-emerald-700;
+  font-family: 'Playfair Display', serif;
+}
+
+.stat-label {
+  @apply text-xs text-stone-400 mt-0.5;
+}
+
+.status-grid {
+  @apply space-y-2;
+}
+
+.status-row {
+  @apply flex items-center gap-2;
+}
+
+.status-dot {
+  @apply w-2.5 h-2.5 rounded-full shrink-0;
+}
+
+.dot-待补充 {
+  @apply bg-stone-300;
+}
+
+.dot-待校对 {
+  @apply bg-amber-400;
+}
+
+.dot-可打印 {
+  @apply bg-emerald-500;
+}
+
+.dot-暂不展示 {
+  @apply bg-red-400;
+}
+
+.status-name {
+  @apply text-sm text-stone-600 flex-1;
+}
+
+.status-count {
+  @apply text-sm font-bold text-stone-800;
+}
+
+.risk-section {
+  @apply pt-3 border-t border-stone-100;
+}
+
+.risk-header {
+  @apply flex items-center gap-1.5 text-sm font-medium text-stone-700 mb-2;
+}
+
+.risk-group {
+  @apply flex gap-1.5 mb-1;
+}
+
+.risk-badge {
+  @apply text-xs px-2 py-0.5 rounded-full font-medium;
+}
+
+.risk-high {
+  @apply bg-red-100 text-red-600;
+}
+
+.risk-medium {
+  @apply bg-amber-100 text-amber-600;
+}
+
+.risk-low {
+  @apply bg-orange-100 text-orange-500;
+}
+
+.risk-details {
+  @apply space-y-1 mt-2;
+}
+
+.risk-item {
+  @apply flex items-start gap-1.5 text-xs text-stone-500;
+}
+
+.risk-msg {
+  @apply leading-relaxed;
+}
+
+.more-risks {
+  @apply text-xs text-stone-400 italic pl-4;
+}
+
+.selection-section {
+  @apply pt-3 border-t border-stone-100;
+}
+
+.selection-info {
+  @apply text-xs text-stone-500 mb-2;
+}
+
+.batch-buttons {
+  @apply flex flex-wrap gap-1.5 mb-2;
+}
+
+.btn-batch {
+  @apply text-xs px-2 py-1 rounded-md cursor-pointer border-0 transition-all;
+}
+
+.batch-待补充 {
+  @apply bg-stone-100 text-stone-600 hover:bg-stone-200;
+}
+
+.batch-待校对 {
+  @apply bg-amber-50 text-amber-600 hover:bg-amber-100;
+}
+
+.batch-可打印 {
+  @apply bg-emerald-50 text-emerald-600 hover:bg-emerald-100;
+}
+
+.batch-暂不展示 {
+  @apply bg-red-50 text-red-500 hover:bg-red-100;
+}
+
+.selection-actions {
+  @apply flex gap-3;
+}
+
+.btn-select-all,
+.btn-select-clear {
+  @apply inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700
+    cursor-pointer border-0 bg-transparent;
+}
+
+.select-all-section {
+  @apply pt-3 border-t border-stone-100;
+}
+
+.btn-select-all {
+  @apply inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700
+    cursor-pointer border-0 bg-transparent;
+}
+
+.export-section {
+  @apply pt-3 border-t border-stone-100;
+}
+
+.export-title {
+  @apply text-xs font-medium text-stone-500 mb-2;
+}
+
+.export-buttons {
+  @apply flex flex-col gap-1.5;
+}
+
+.btn-export {
+  @apply inline-flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm
+    bg-stone-50 hover:bg-stone-100 text-stone-600 transition-all
+    cursor-pointer border border-stone-200;
+}
+
+.btn-checklist {
+  @apply bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100;
+}
+</style>
